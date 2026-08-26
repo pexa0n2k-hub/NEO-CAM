@@ -31,25 +31,33 @@ function curve(amount){
   return c;
 }
 
-let zoom=1, zoomMin=1, zoomMax=1;
+let zoom=1, zoomMin=1, zoomMax=4, hardwareZoom=false;
 
 function updateZoomUI(){
   const z=document.getElementById('zoom');
   const zv=document.getElementById('zoomValue');
   if(z){ z.value=zoom; }
   if(zv){ zv.textContent=zoom.toFixed(1)+'×'; }
+  const note=document.querySelector('.camera-note');
+  if(note) note.textContent=(hardwareZoom?'ZOOM CÁMARA':'ZOOM DIGITAL')+' · '+zoom.toFixed(1)+'×';
 }
 
 async function applyZoom(){
   const track=stream?.getVideoTracks?.()[0];
   if(!track) return;
   const caps=track.getCapabilities ? track.getCapabilities() : {};
-  if(caps.zoom){
+  hardwareZoom=!!caps.zoom;
+  if(hardwareZoom){
     zoomMin=caps.zoom.min ?? 1;
-    zoomMax=caps.zoom.max ?? 1;
+    zoomMax=Math.min(caps.zoom.max ?? 4,4);
     zoom=Math.max(zoomMin,Math.min(zoomMax,Number(zoom)));
-    try{ await track.applyConstraints({advanced:[{zoom}]}); }catch(e){ console.warn('Zoom no soportado',e); }
+    try{ await track.applyConstraints({advanced:[{zoom}]}); }catch(e){ hardwareZoom=false; }
   }
+  // Fallback: digital zoom if the browser does not expose camera zoom.
+  if(!hardwareZoom) video.style.transform=`scale(${Math.max(1,zoom)})`;
+  else video.style.transform='scale(1)';
+  const z=document.getElementById('zoom');
+  if(z){z.min=zoomMin;z.max=zoomMax;}
   updateZoomUI();
 }
 
@@ -60,6 +68,7 @@ async function startCamera(){
     audio:true
   });
   video.srcObject=stream;
+  video.style.transform='scale(1)';
   zoom=1;
   setupAudio(stream);
   await applyZoom();
