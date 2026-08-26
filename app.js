@@ -6,6 +6,12 @@ const intensityValue=document.getElementById('intensityValue');
 const recordBtn=document.getElementById('record');
 const downloadBtn=document.getElementById('download');
 const muteBtn=document.getElementById('mute');
+const effectsBox=document.querySelector('.effects');
+const zoomBox=document.createElement('div');
+zoomBox.className='zoom-control';
+zoomBox.innerHTML='<span>−</span><input id="zoom" type="range" min="1" max="4" step="0.1" value="1" aria-label="Zoom"><span>+</span><output id="zoomValue">1.0×</output>';
+effectsBox.parentNode.insertBefore(zoomBox,effectsBox);
+
 const switchBtn=document.getElementById('switchCam');
 
 let facing='user', stream, audioCtx, source, destination, recorder, chunks=[];
@@ -25,6 +31,28 @@ function curve(amount){
   return c;
 }
 
+let zoom=1, zoomMin=1, zoomMax=1;
+
+function updateZoomUI(){
+  const z=document.getElementById('zoom');
+  const zv=document.getElementById('zoomValue');
+  if(z){ z.value=zoom; }
+  if(zv){ zv.textContent=zoom.toFixed(1)+'×'; }
+}
+
+async function applyZoom(){
+  const track=stream?.getVideoTracks?.()[0];
+  if(!track) return;
+  const caps=track.getCapabilities ? track.getCapabilities() : {};
+  if(caps.zoom){
+    zoomMin=caps.zoom.min ?? 1;
+    zoomMax=caps.zoom.max ?? 1;
+    zoom=Math.max(zoomMin,Math.min(zoomMax,Number(zoom)));
+    try{ await track.applyConstraints({advanced:[{zoom}]}); }catch(e){ console.warn('Zoom no soportado',e); }
+  }
+  updateZoomUI();
+}
+
 async function startCamera(){
   if(stream) stream.getTracks().forEach(t=>t.stop());
   stream=await navigator.mediaDevices.getUserMedia({
@@ -32,7 +60,9 @@ async function startCamera(){
     audio:true
   });
   video.srcObject=stream;
+  zoom=1;
   setupAudio(stream);
+  await applyZoom();
   statusText.textContent='CÁMARA LISTA';
 }
 
@@ -47,13 +77,16 @@ function setupAudio(s){
   const high=audioCtx.createBiquadFilter();
   const distortion=audioCtx.createWaveShaper();
   const compressor=audioCtx.createDynamicsCompressor();
-  const dry=audioCtx.createGain();
 
-  source.connect(inputGain).connect(low).connect(high).connect(distortion).connect(compressor).connect(destination);
-  compressor.connect(audioCtx.destination);
-  dry.gain.value=0;
-  source.connect(dry).connect(audioCtx.destination);
+  // Mic -> effects -> MediaStreamDestination (this is the audio that gets recorded)
+  source.connect(inputGain);
+  inputGain.connect(low);
+  low.connect(high);
+  high.connect(distortion);
+  distortion.connect(compressor);
+  compressor.connect(destination);
 
+  // Never route the microphone to the speakers: prevents feedback/echo.
   window.audioNodes={inputGain,low,high,distortion,compressor};
   applyEffect();
 }
@@ -80,10 +113,15 @@ document.querySelectorAll('.effect').forEach(btn=>{
 });
 
 intensity.oninput=()=>{intensityValue.textContent=intensity.value+'%';applyEffect()};
+document.getElementById('zoom').oninput=async(e)=>{
+  zoom=Number(e.target.value);
+  await applyZoom();
+};
 
 recordBtn.onclick=()=>{
   if(recorder?.state==='recording'){recorder.stop();return}
   if(!stream)return;
+  if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
   chunks=[];
   const combined=new MediaStream([
     stream.getVideoTracks()[0],
