@@ -1,172 +1,20 @@
-const video=document.getElementById('preview');
-const statusText=document.getElementById('statusText');
-const effectName=document.getElementById('effectName');
-const intensity=document.getElementById('intensity');
-const intensityValue=document.getElementById('intensityValue');
-const recordBtn=document.getElementById('record');
-const downloadBtn=document.getElementById('download');
-const muteBtn=document.getElementById('mute');
-const effectsBox=document.querySelector('.effects');
-const zoomBox=document.createElement('div');
-zoomBox.className='zoom-control';
-zoomBox.innerHTML='<span>−</span><input id="zoom" type="range" min="1" max="4" step="0.1" value="1" aria-label="Zoom"><span>+</span><output id="zoomValue">1.0×</output>';
-effectsBox.parentNode.insertBefore(zoomBox,effectsBox);
-
-const switchBtn=document.getElementById('switchCam');
-
-let facing='user', stream, audioCtx, source, destination, recorder, chunks=[];
-let current='normal', muted=false, recordedUrl=null;
-
-const filters={
-  normal:{gain:1, low:20, high:20000, distortion:0},
-  robot:{gain:1, low:180, high:4200, distortion:55},
-  demon:{gain:1.15, low:35, high:3800, distortion:18},
-  radio:{gain:1.05, low:350, high:3200, distortion:28},
-  glitch:{gain:1, low:120, high:8500, distortion:80}
-};
-
-function curve(amount){
-  const n=44100, c=new Float32Array(n), k=amount;
-  for(let i=0;i<n;i++){const x=i*2/n-1;c[i]=((3+k)*x*20*Math.PI/180)/(Math.PI+k*Math.abs(x));}
-  return c;
-}
-
-let zoom=1, zoomMin=1, zoomMax=4, hardwareZoom=false;
-
-function updateZoomUI(){
-  const z=document.getElementById('zoom');
-  const zv=document.getElementById('zoomValue');
-  if(z){ z.value=zoom; }
-  if(zv){ zv.textContent=zoom.toFixed(1)+'×'; }
-  const note=document.querySelector('.camera-note');
-  if(note) note.textContent=(hardwareZoom?'ZOOM CÁMARA':'ZOOM DIGITAL')+' · '+zoom.toFixed(1)+'×';
-}
-
-async function applyZoom(){
-  const track=stream?.getVideoTracks?.()[0];
-  if(!track) return;
-  const caps=track.getCapabilities ? track.getCapabilities() : {};
-  hardwareZoom=!!caps.zoom;
-  if(hardwareZoom){
-    zoomMin=caps.zoom.min ?? 1;
-    zoomMax=Math.min(caps.zoom.max ?? 4,4);
-    zoom=Math.max(zoomMin,Math.min(zoomMax,Number(zoom)));
-    try{ await track.applyConstraints({advanced:[{zoom}]}); }catch(e){ hardwareZoom=false; }
-  }
-  // Fallback: digital zoom if the browser does not expose camera zoom.
-  if(!hardwareZoom) video.style.transform=`scale(${Math.max(1,zoom)})`;
-  else video.style.transform='scale(1)';
-  const z=document.getElementById('zoom');
-  if(z){z.min=zoomMin;z.max=zoomMax;}
-  updateZoomUI();
-}
-
-async function startCamera(){
-  if(stream) stream.getTracks().forEach(t=>t.stop());
-  stream=await navigator.mediaDevices.getUserMedia({
-    video:{facingMode:facing,width:{ideal:1080},height:{ideal:1920}},
-    audio:true
-  });
-  video.srcObject=stream;
-  video.style.transform='scale(1)';
-  zoom=1;
-  setupAudio(stream);
-  await applyZoom();
-  statusText.textContent='CÁMARA LISTA';
-}
-
-function setupAudio(s){
-  if(audioCtx) audioCtx.close();
-  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-  source=audioCtx.createMediaStreamSource(s);
-  destination=audioCtx.createMediaStreamDestination();
-
-  const inputGain=audioCtx.createGain();
-  const low=audioCtx.createBiquadFilter();
-  const high=audioCtx.createBiquadFilter();
-  const distortion=audioCtx.createWaveShaper();
-  const compressor=audioCtx.createDynamicsCompressor();
-
-  // Mic -> effects -> MediaStreamDestination (this is the audio that gets recorded)
-  source.connect(inputGain);
-  inputGain.connect(low);
-  low.connect(high);
-  high.connect(distortion);
-  distortion.connect(compressor);
-  compressor.connect(destination);
-
-  // Never route the microphone to the speakers: prevents feedback/echo.
-  window.audioNodes={inputGain,low,high,distortion,compressor};
-  applyEffect();
-}
-
-function applyEffect(){
-  if(!window.audioNodes)return;
-  const f=filters[current], p=Number(intensity.value)/100;
-  const n=window.audioNodes;
-  n.inputGain.gain.value=muted?0:0.55+(p*.45);
-  n.low.frequency.value=f.low+(20-f.low)*(1-p);
-  n.high.frequency.value=f.high+(20000-f.high)*(1-p);
-  n.distortion.curve=curve(f.distortion*p);
-  n.distortion.oversample='4x';
-  effectName.textContent=current.toUpperCase();
-}
-
-document.querySelectorAll('.effect').forEach(btn=>{
-  btn.onclick=()=>{
-    document.querySelectorAll('.effect').forEach(x=>x.classList.remove('active'));
-    btn.classList.add('active');
-    current=btn.dataset.effect;
-    applyEffect();
-  };
-});
-
+const video=document.getElementById('preview'), statusText=document.getElementById('statusText'), effectName=document.getElementById('effectName');
+const intensity=document.getElementById('intensity'), intensityValue=document.getElementById('intensityValue'), zoom=document.getElementById('zoom'), zoomValue=document.getElementById('zoomValue');
+const recordBtn=document.getElementById('record'), downloadBtn=document.getElementById('download'), muteBtn=document.getElementById('mute'), switchBtn=document.getElementById('switchCam');
+const cameraNote=document.getElementById('cameraNote'), micLevel=document.getElementById('micLevel'), audioState=document.getElementById('audioState');
+let facing='user',stream=null,audioCtx=null,source=null,destination=null,recorder=null,chunks=[],current='normal',muted=false,recordedUrl=null,analyser=null,raf=0,hardwareZoom=false,zoomValueNum=1;
+const filters={normal:{low:20,high:20000,distortion:0},robot:{low:180,high:4200,distortion:55},demon:{low:35,high:3800,distortion:18},radio:{low:350,high:3200,distortion:28},glitch:{low:120,high:8500,distortion:80}};
+function curve(amount){const n=44100,c=new Float32Array(n),k=amount;for(let i=0;i<n;i++){const x=i*2/n-1;c[i]=((3+k)*x*20*Math.PI/180)/(Math.PI+k*Math.abs(x));}return c}
+function updateZoomUI(){zoomValue.textContent=zoomValueNum.toFixed(1)+'×';cameraNote.textContent=(hardwareZoom?'ZOOM CÁMARA':'ZOOM DIGITAL')+' · '+zoomValueNum.toFixed(1)+'×'}
+async function applyZoom(){const track=stream?.getVideoTracks()[0];if(!track)return;const caps=track.getCapabilities?.()||{};hardwareZoom=!!caps.zoom;if(hardwareZoom){const min=caps.zoom.min??1,max=Math.min(caps.zoom.max??4,4);zoom.min=min;zoom.max=max;zoomValueNum=Math.max(min,Math.min(max,Number(zoom.value)));try{await track.applyConstraints({advanced:[{zoom:zoomValueNum}]})}catch{hardwareZoom=false}}if(!hardwareZoom)video.style.transform=`scale(${Math.max(1,zoomValueNum)})`;else video.style.transform='scale(1)';updateZoomUI()}
+async function setupAudio(s){if(audioCtx){try{await audioCtx.close()}catch{}}audioCtx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});await audioCtx.resume();source=audioCtx.createMediaStreamSource(s);destination=audioCtx.createMediaStreamDestination();const gain=audioCtx.createGain(),low=audioCtx.createBiquadFilter(),high=audioCtx.createBiquadFilter(),dist=audioCtx.createWaveShaper(),comp=audioCtx.createDynamicsCompressor();source.connect(gain);gain.connect(low);low.connect(high);high.connect(dist);dist.connect(comp);comp.connect(destination);analyser=audioCtx.createAnalyser();analyser.fftSize=1024;comp.connect(analyser);window.audioNodes={gain,low,high,dist,comp};const t=destination.stream.getAudioTracks()[0];t.enabled=true;applyEffect();monitorMic()}
+function monitorMic(){cancelAnimationFrame(raf);const data=new Uint8Array(analyser?.fftSize||1024);const tick=()=>{if(analyser){analyser.getByteTimeDomainData(data);let sum=0;for(const v of data){const x=(v-128)/128;sum+=x*x}const rms=Math.sqrt(sum/data.length);const pct=Math.min(100,Math.round(rms*500));micLevel.style.width=pct+'%';audioState.textContent=pct>2?'AUDIO OK':'ESPERANDO MIC';audioState.style.color=pct>2?'#55ff9a':'#ffb347'}raf=requestAnimationFrame(tick)};tick()}
+function applyEffect(){if(!window.audioNodes)return;const f=filters[current],p=Number(intensity.value)/100,n=window.audioNodes;n.gain.gain.value=muted?0:0.9;n.low.frequency.value=f.low+(20-f.low)*(1-p);n.high.frequency.value=f.high+(20000-f.high)*(1-p);n.dist.curve=curve(f.distortion*p);n.dist.oversample='4x';effectName.textContent=current.toUpperCase()}
+async function startCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1080},height:{ideal:1920}},audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});video.srcObject=stream;await video.play();zoomValueNum=1;zoom.value=1;video.style.transform='scale(1)';await setupAudio(stream);await applyZoom();statusText.textContent='CÁMARA LISTA'}
+document.querySelectorAll('.effect').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.effect').forEach(x=>x.classList.remove('active'));btn.classList.add('active');current=btn.dataset.effect;applyEffect()});
 intensity.oninput=()=>{intensityValue.textContent=intensity.value+'%';applyEffect()};
-document.getElementById('zoom').oninput=async(e)=>{
-  zoom=Number(e.target.value);
-  await applyZoom();
-};
-
-recordBtn.onclick=()=>{
-  if(recorder?.state==='recording'){recorder.stop();return}
-  if(!stream)return;
-  if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
-  chunks=[];
-  const combined=new MediaStream([
-    stream.getVideoTracks()[0],
-    destination.stream.getAudioTracks()[0]
-  ]);
-  const type=MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')?'video/webm;codecs=vp9,opus':'video/webm';
-  recorder=new MediaRecorder(combined,{mimeType:type});
-  recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
-  recorder.onstop=()=>{
-    const blob=new Blob(chunks,{type:'video/webm'});
-    recordedUrl=URL.createObjectURL(blob);
-    downloadBtn.disabled=false;
-    downloadBtn.onclick=()=>{
-      const a=document.createElement('a');a.href=recordedUrl;a.download='neo-cam-'+Date.now()+'.webm';a.click();
-    };
-    statusText.textContent='VIDEO LISTO';
-  };
-  recorder.start();
-  recordBtn.classList.add('recording');
-  statusText.textContent='GRABANDO';
-};
-
-muteBtn.onclick=()=>{
-  muted=!muted;
-  muteBtn.textContent=muted?'🔇':'🎙️';
-  applyEffect();
-};
-
-switchBtn.onclick=async()=>{
-  facing=facing==='user'?'environment':'user';
-  try{await startCamera()}catch(e){statusText.textContent='NO SE PUDO CAMBIAR'} 
-};
-
-(async()=>{
-  try{await startCamera()}catch(e){
-    statusText.textContent='PERMISO DE CÁMARA REQUERIDO';
-    console.error(e);
-  }
-})();
+zoom.oninput=async()=>{zoomValueNum=Number(zoom.value);await applyZoom()};
+recordBtn.onclick=async()=>{if(recorder&&recorder.state==='recording'){recorder.stop();return}if(!stream)return;try{if(audioCtx?.state!=='running')await audioCtx.resume();const processedTrack=destination?.stream.getAudioTracks()[0];const originalTrack=stream.getAudioTracks()[0];if(originalTrack)originalTrack.enabled=true;const processedOk=processedTrack&&processedTrack.readyState==='live'&&processedTrack.enabled;const audioTrack=processedOk?processedTrack:originalTrack;if(!audioTrack){statusText.textContent='SIN MICRÓFONO';return}chunks=[];const combined=new MediaStream([stream.getVideoTracks()[0],audioTrack]);let mime='video/webm;codecs=vp8,opus';if(MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus'))mime='video/webm;codecs=vp9,opus';else if(!MediaRecorder.isTypeSupported(mime)&&MediaRecorder.isTypeSupported('video/webm'))mime='video/webm';recorder=new MediaRecorder(combined,{mimeType:mime,audioBitsPerSecond:128000,videoBitsPerSecond:5000000});recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};recorder.onerror=e=>{console.error(e);recordBtn.classList.remove('recording');statusText.textContent='ERROR DE GRABACIÓN'};recorder.onstop=()=>{recordBtn.classList.remove('recording');const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});if(recordedUrl)URL.revokeObjectURL(recordedUrl);recordedUrl=URL.createObjectURL(blob);downloadBtn.disabled=false;downloadBtn.onclick=()=>{const a=document.createElement('a');a.href=recordedUrl;a.download='neo-cam-'+Date.now()+'.webm';document.body.appendChild(a);a.click();a.remove()};statusText.textContent='VIDEO LISTO'};recorder.start(250);recordBtn.classList.add('recording');statusText.textContent='GRABANDO';}catch(e){console.error(e);recordBtn.classList.remove('recording');statusText.textContent='NO SE PUDO GRABAR'}};
+muteBtn.onclick=()=>{muted=!muted;muteBtn.textContent=muted?'🔇':'🎙️';applyEffect()};
+switchBtn.onclick=async()=>{facing=facing==='user'?'environment':'user';try{await startCamera()}catch(e){console.error(e);statusText.textContent='NO SE PUDO CAMBIAR'}};
+(async()=>{try{await startCamera()}catch(e){console.error(e);statusText.textContent='PERMISO DE CÁMARA REQUERIDO'}})();
