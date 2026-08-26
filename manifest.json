@@ -1,0 +1,9 @@
+{
+  "name":"NEO CAM",
+  "short_name":"NEO CAM",
+  "start_url":"./",
+  "display":"standalone",
+  "background_color":"#09090d",
+  "theme_color":"#ff1738",
+  "orientation":"portrait"
+}

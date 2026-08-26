@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#09090d">
+  <link rel="manifest" href="manifest.json">
+  <title>NEO CAM</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <video id="preview" autoplay playsinline muted></video>
+    <div class="shade"></div>
+
+    <header>
+      <div class="brand"><span>✦</span> NEO CAM</div>
+      <button id="switchCam" class="icon-btn" aria-label="Cambiar cámara">↻</button>
+    </header>
+
+    <section class="hud">
+      <div class="status"><span class="dot"></span><span id="statusText">CÁMARA LISTA</span></div>
+      <div class="effect-chip">🎙️ <span id="effectName">NORMAL</span></div>
+    </section>
+
+    <section class="effects">
+      <button class="effect active" data-effect="normal">NORMAL</button>
+      <button class="effect" data-effect="robot">🤖 ROBOT</button>
+      <button class="effect" data-effect="demon">👹 DEMON</button>
+      <button class="effect" data-effect="radio">📻 RADIO</button>
+      <button class="effect" data-effect="glitch">⚡ GLITCH</button>
+    </section>
+
+    <div class="intensity">
+      <label>INTENSIDAD <output id="intensityValue">60%</output></label>
+      <input id="intensity" type="range" min="0" max="100" value="60">
+    </div>
+
+    <footer>
+      <button id="record" class="record"><span></span></button>
+      <button id="mute" class="small-btn">🎙️</button>
+      <button id="download" class="small-btn" disabled>↓</button>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
