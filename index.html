@@ -41,6 +41,33 @@
       <button id="download" class="small-btn" disabled>↓</button>
     </footer>
   </section>
+
+<section class="camera-engine" id="cameraEngine">
+  <div class="engine-title">CAMERA ENGINE <span id="engineStatus">AUTO</span></div>
+  <div class="engine-grid">
+    <label>RESOLUCIÓN
+      <select id="resolution">
+        <option value="auto">MÁXIMA DISPONIBLE</option>
+        <option value="3840x2160">4K · 2160p</option>
+        <option value="2560x1440">1440p</option>
+        <option value="1920x1080">1080p</option>
+        <option value="1280x720">720p</option>
+      </select>
+    </label>
+    <label>FPS
+      <select id="fps">
+        <option value="auto">AUTO</option>
+        <option value="60">60 FPS</option>
+        <option value="30">30 FPS</option>
+        <option value="24">24 FPS</option>
+      </select>
+    </label>
+    <label>CÁMARA
+      <select id="cameraSelect"><option value="">AUTOMÁTICA</option></select>
+    </label>
+  </div>
+  <div class="capabilities" id="capabilities">Detectando capacidades…</div>
+</section>
 </main>
 <script src="app.js"></script>
 </body></html>

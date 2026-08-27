@@ -112,38 +112,110 @@ async function buildProcessedAudio(){
   monitorMic();
 }
 
+async function enumerateCameras(){
+  const select=$('cameraSelect');
+  if(!select || !navigator.mediaDevices?.enumerateDevices)return;
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const cams=devices.filter(d=>d.kind==='videoinput');
+    select.innerHTML='<option value="">AUTOMÁTICA</option>';
+    cams.forEach((d,n)=>{
+      const o=document.createElement('option');
+      o.value=d.deviceId;
+      o.textContent=d.label||`CÁMARA ${n+1}`;
+      select.appendChild(o);
+    });
+  }catch(e){console.warn(e)}
+}
+
+function getRequestedVideoConstraints(){
+  const res=$('resolution')?.value||'auto';
+  const fps=$('fps')?.value||'auto';
+  const selected=$('cameraSelect')?.value||'';
+  const c={facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1080}};
+  if(selected)c.deviceId={exact:selected};
+  if(res!=='auto'){
+    const [w,h]=res.split('x').map(Number);
+    c.width={ideal:w};
+    c.height={ideal:h};
+  }else{
+    // Ask for the largest practical capture size. The browser will
+    // fall back if the camera cannot provide it.
+    c.width={ideal:3840};
+    c.height={ideal:2160};
+  }
+  if(fps!=='auto')c.frameRate={ideal:Number(fps),max:Number(fps)};
+  else c.frameRate={ideal:60,max:60};
+  return c;
+}
+
+async function reportCapabilities(){
+  const track=stream?.getVideoTracks?.()[0];
+  if(!track)return;
+  const s=track.getSettings?.()||{};
+  const c=track.getCapabilities?.()||{};
+  const caps=$('capabilities');
+  const engine=$('engineStatus');
+  if(engine)engine.textContent=`${s.width||'?'}×${s.height||'?'} · ${s.frameRate?Math.round(s.frameRate):'?'} FPS`;
+  if(caps){
+    const zoomText=c.zoom?`zoom ${c.zoom.min??1}–${c.zoom.max??4}×`:'zoom estándar';
+    caps.textContent=`CAPTURA REAL: ${s.width||'?'}×${s.height||'?'} · ${s.frameRate?Math.round(s.frameRate):'?'} FPS · ${zoomText}`;
+  }
+}
+
 async function startCamera(){
   if(stream)stream.getTracks().forEach(t=>t.stop());
 
-  stream=await navigator.mediaDevices.getUserMedia({
-    video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1080}},
+  const constraints={
+    video:getRequestedVideoConstraints(),
     audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
-  });
+  };
+
+  try{
+    stream=await navigator.mediaDevices.getUserMedia(constraints);
+  }catch(e){
+    console.warn('Requested camera mode failed, falling back:',e);
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+    });
+  }
 
   video.srcObject=stream;
   await video.play();
 
-  zoomNum=1;zoom.value=1;zoomValue.textContent='1.0×';
+  zoomNum=1;
+  if($('zoom'))$('zoom').value=1;
+  if($('zoomValue'))$('zoomValue').textContent='1.0×';
   video.style.transform='scale(1)';
-  cameraNote.textContent='VISTA COMPLETA · 1.0×';
+  if(cameraNote)cameraNote.textContent='VISTA COMPLETA · 1.0×';
+
+  // Camera restart invalidates any old audio graph.
+  if(audioCtx){try{await audioCtx.close()}catch{}}
+  audioCtx=null;source=null;destination=null;analyser=null;processor=null;
+  if(typeof nodes!=='undefined')nodes=null;
 
   micLevel.style.width='0%';
   audioState.textContent='MICRÓFONO LISTO';
-  setStatus('CÁMARA LISTA · V1.12');
+  await reportCapabilities();
+  await enumerateCameras();
+  setStatus('CÁMARA LISTA');
 }
 
 async function applyZoom(){
   const track=stream?.getVideoTracks?.()[0];if(!track)return;
   const caps=track.getCapabilities?.()||{};
   if(caps.zoom){
-    zoomNum=Number(zoom.value);
+    const min=caps.zoom.min??1,max=Math.min(caps.zoom.max??4,4);
+    zoomNum=Math.min(max,Math.max(min,Number(zoom.value)));
+    zoom.value=zoomNum;
     try{
       await track.applyConstraints({advanced:[{zoom:zoomNum}]});
       video.style.transform='scale(1)';
-      cameraNote.textContent='ZOOM CÁMARA · '+zoomNum.toFixed(1)+'×';
       zoomValue.textContent=zoomNum.toFixed(1)+'×';
+      cameraNote.textContent='ZOOM CÁMARA · '+zoomNum.toFixed(1)+'×';
       return;
-    }catch{}
+    }catch(e){console.warn(e)}
   }
   zoomNum=Number(zoom.value);
   video.style.transform=`scale(${zoomNum})`;
@@ -172,7 +244,7 @@ muteBtn.addEventListener('click',()=>{
 });
 
 switchBtn.addEventListener('click',async()=>{
-  facing=facing==='user'?'environment':'user';
+  facing=facing==='user'?'environment':'user'; if($('cameraSelect'))$('cameraSelect').value='';
   try{await startCamera()}catch(e){console.error(e);setStatus('NO SE PUDO CAMBIAR')}
 });
 
@@ -256,6 +328,11 @@ recordBtn.addEventListener('click',async()=>{
     setStatus('ERROR DE AUDIO');
   }
 });
+
+
+$('resolution')?.addEventListener('change',async()=>{try{await startCamera()}catch(e){console.error(e)}});
+$('fps')?.addEventListener('change',async()=>{try{await startCamera()}catch(e){console.error(e)}});
+$('cameraSelect')?.addEventListener('change',async()=>{try{await startCamera()}catch(e){console.error(e)}});
 
 recordTimer.textContent='00:00';
 
