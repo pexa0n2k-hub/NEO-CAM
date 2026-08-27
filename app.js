@@ -7,7 +7,7 @@ const switchBtn=$('switchCam'),micLevel=$('micLevel'),audioState=$('audioState')
 
 let stream=null,facing='user',audioCtx=null,source=null,destination=null,analyser=null;
 let recorder=null,chunks=[],recordedUrl=null,current='normal',muted=false;
-let timerRAF=0,startedAt=0,zoomNum=1,processor=null,graphInput=null,graphGain=null;
+let timerRAF=0,startedAt=0,zoomNum=1,processor=null,graphInput=null,graphGain=null,nodesProcessedAnalyser=null;
 
 function setStatus(t){statusText.textContent=t}
 function formatTime(ms){const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
@@ -54,13 +54,17 @@ async function buildProcessedAudio(){
   source.connect(analyser);
 
   // 4096-frame ScriptProcessor: supported by Android Chrome/WebView.
-  processor=audioCtx.createScriptProcessor(4096,1,1);
+  processor=audioCtx.createScriptProcessor(2048,1,1);
   graphGain=audioCtx.createGain();
   graphGain.gain.value=1;
 
   source.connect(processor);
   processor.connect(graphGain);
   graphGain.connect(destination);
+
+  const processedAnalyser=audioCtx.createAnalyser();
+  processedAnalyser.fftSize=512;
+  graphGain.connect(processedAnalyser);
 
   let phase=0, robotLP=0;
   processor.onaudioprocess=e=>{
@@ -199,7 +203,7 @@ async function startCamera(){
   audioState.textContent='MICRÓFONO LISTO';
   await reportCapabilities();
   await enumerateCameras();
-  setStatus('CÁMARA LISTA');
+  setStatus('CÁMARA LISTA · ENGINE ACTIVO');
 }
 
 async function applyZoom(){
