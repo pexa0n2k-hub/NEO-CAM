@@ -62,7 +62,7 @@ async function buildProcessedAudio(){
   processor.connect(graphGain);
   graphGain.connect(destination);
 
-  let phase=0;
+  let phase=0, robotLP=0;
   processor.onaudioprocess=e=>{
     const input=e.inputBuffer.getChannelData(0);
     const output=e.outputBuffer.getChannelData(0);
@@ -73,15 +73,18 @@ async function buildProcessedAudio(){
       const x=input[i];
 
       if(current==='robot'){
-        // 55-95 Hz ring modulation. At 100%, almost all of the
-        // carrier is modulated; 20% clean signal preserves words.
-        const carrierHz=55+p*40;
+        // V1.12: intelligibility-first robot effect.
+        // Keep the original voice dominant and blend a mild robotic layer.
+        const carrierHz=32+p*28;
         phase += 2*Math.PI*carrierHz/sr;
         if(phase>Math.PI*2)phase-=Math.PI*2;
-        const ring=Math.sin(phase);
-        const processed=x*ring;
-        const clean=x*(1-p*.80);
-        output[i]=(clean+processed*(.25+p*.95))*0.92;
+        const ring=.5 + .5*Math.sin(phase); // no phase inversion
+        const modulated=x*ring;
+        const alpha=Math.min(.32, .10 + p*.16);
+        robotLP += alpha*(modulated-robotLP);
+        const cleanMix=.82 - p*.20;
+        const fxMix=.18 + p*.20;
+        output[i]=(x*cleanMix + robotLP*fxMix)*.96;
 
       }else if(current==='demon'){
         // Pitch-like character using asymmetric waveshaping + bass emphasis.
@@ -126,7 +129,7 @@ async function startCamera(){
 
   micLevel.style.width='0%';
   audioState.textContent='MICRÓFONO LISTO';
-  setStatus('CÁMARA LISTA');
+  setStatus('CÁMARA LISTA · V1.12');
 }
 
 async function applyZoom(){
