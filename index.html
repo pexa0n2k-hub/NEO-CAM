@@ -9,11 +9,11 @@
   <section class="camera-stage">
     <video id="preview" autoplay playsinline muted></video>
     <div class="shade"></div>
-    <div class="camera-note" id="cameraNote">VISTA COMPLETA · 1.0×</div>
+    <div class="camera-note" id="cameraNote">VISTA COMPLETA · 1.0×</div><div class="capture-badge" id="captureBadge">4K · 30 FPS</div>
     <div class="record-timer" id="recordTimer">00:00</div>
   </section>
 
-  <header><div class="brand"><span>✦</span> NEO CAM</div><button id="switchCam" class="icon-btn">↻</button></header>
+  <header><div class="brand"><span>✦</span> NEO CAM</div><div class="top-actions"><button id="engineToggle" class="icon-btn" aria-label="Camera Engine">⚙</button><button id="switchCam" class="icon-btn" aria-label="Cambiar cámara">↻</button></div></header>
   <section class="hud">
     <div class="status"><span class="dot"></span><span id="statusText">CÁMARA LISTA</span></div>
     <div class="effect-chip">🎙️ <span id="effectName">NORMAL</span></div>
@@ -42,8 +42,8 @@
     </footer>
   </section>
 
-<section class="camera-engine" id="cameraEngine">
-  <div class="engine-title">CAMERA ENGINE <span id="engineStatus">AUTO</span></div>
+<div class="engine-backdrop" id="engineBackdrop"></div><section class="camera-engine" id="cameraEngine">
+  <div class="engine-handle"></div><div class="engine-title"><span>CAMERA ENGINE</span><button id="engineClose" class="engine-close">×</button></div><div class="engine-status" id="engineStatus">AUTO</div>
   <div class="engine-grid">
     <label>RESOLUCIÓN
       <select id="resolution">

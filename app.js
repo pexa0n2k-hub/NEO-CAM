@@ -116,6 +116,13 @@ async function buildProcessedAudio(){
   monitorMic();
 }
 
+function setEngine(open){
+  const panel=$('cameraEngine'),back=$('engineBackdrop');
+  if(!panel)return;
+  panel.classList.toggle('open',open);
+  back?.classList.toggle('open',open);
+}
+
 async function enumerateCameras(){
   const select=$('cameraSelect');
   if(!select || !navigator.mediaDevices?.enumerateDevices)return;
@@ -161,6 +168,8 @@ async function reportCapabilities(){
   const caps=$('capabilities');
   const engine=$('engineStatus');
   if(engine)engine.textContent=`${s.width||'?'}×${s.height||'?'} · ${s.frameRate?Math.round(s.frameRate):'?'} FPS`;
+  const badge=$('captureBadge');
+  if(badge)badge.textContent=`${s.width||'?'}×${s.height||'?'} · ${s.frameRate?Math.round(s.frameRate):'?'} FPS`;
   if(caps){
     const zoomText=c.zoom?`zoom ${c.zoom.min??1}–${c.zoom.max??4}×`:'zoom estándar';
     caps.textContent=`CAPTURA REAL: ${s.width||'?'}×${s.height||'?'} · ${s.frameRate?Math.round(s.frameRate):'?'} FPS · ${zoomText}`;
@@ -334,6 +343,9 @@ recordBtn.addEventListener('click',async()=>{
 });
 
 
+$('engineToggle')?.addEventListener('click',()=>setEngine(true));
+$('engineClose')?.addEventListener('click',()=>setEngine(false));
+$('engineBackdrop')?.addEventListener('click',()=>setEngine(false));
 $('resolution')?.addEventListener('change',async()=>{try{await startCamera()}catch(e){console.error(e)}});
 $('fps')?.addEventListener('change',async()=>{try{await startCamera()}catch(e){console.error(e)}});
 $('cameraSelect')?.addEventListener('change',async()=>{try{await startCamera()}catch(e){console.error(e)}});
